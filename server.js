@@ -74,7 +74,10 @@ app.post('/api/auth/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: "Invalid Email or Password" });
 
-        const token = jwt.sign({ id: user._id }, 'super_secret_key_123', { expiresIn: '1h' });
+        // Using environment variable fallback for safety
+        const secretKey = process.env.JWT_SECRET || 'super_secret_key_123';
+        const token = jwt.sign({ id: user._id }, secretKey, { expiresIn: '1h' });
+        
         res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
     } catch (err) {
         res.status(500).json({ message: "Error logging in" });
@@ -107,17 +110,28 @@ app.get('/api/tasks/:userId', async (req, res) => {
 app.post('/api/ai/suggest-tasks', async (req, res) => {
     try {
         const { projectIdea } = req.body;
+        if (!projectIdea) return res.status(400).json({ message: "Project idea is required" });
         if (!ai) return res.status(500).json({ message: "AI engine not configured" });
 
-     const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [
-        {
-            role: 'user',
-            parts: [{ text: `Break down the project idea "${projectIdea}" into exactly 3 clear development tasks. Return them as a clean numbered list.` }]
-        }
-    ]
-});   
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                {
+                    role: 'user',
+                    parts: [{ 
+                        text: `You are a friendly, conversational project coach like GPT. 
+                        A user wants to achieve this goal: "${projectIdea}". 
+                        
+                        Break this goal down into exactly 3 clear, practical, and actionable steps.
+                        
+                        CRITICAL INSTRUCTIONS:
+                        1. Use simple, everyday vocabulary that a teenager or absolute beginner can easily understand. Avoid corporate buzzwords or hard jargon.
+                        2. Keep each point brief, clear, and highly practical.
+                        3. Start each point with a bold title using markdown (e.g., 1. **Title**:) followed by the simple explanation.` 
+                    }]
+                }
+            ]
+        });
 
         res.json({ suggestions: response.text });
     } catch (err) {
